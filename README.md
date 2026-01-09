@@ -5,7 +5,6 @@ Interactive installer for deploying Immich on Ubuntu 24.04 / Debian 12 with:
 - Hetzner Storage Box mounted via SSHFS
 - Nginx reverse proxy with Let's Encrypt TLS
 - Optional IP allowlist access restriction
-- Optional prompt to create missing remote Storage Box path
 - Storage Box auth options: SSH key (recommended) or interactive password
 
 ## Usage
@@ -43,3 +42,8 @@ LOCAL_MOUNT=/srv/storagebox
 UPLOAD_LOCATION=/srv/storagebox/immich/library
 DB_DATA_LOCATION=/srv/docker/immich/postgres
 ```
+
+## Notes
+
+- The Storage Box remote path must exist before running the installer.
+- Password auth is interactive (prompts during SFTP test and SSHFS mount), so unattended mode is intended for SSH key auth.

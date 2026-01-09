@@ -34,6 +34,7 @@ sudo ./install-immich.sh --unattended --config /srv/docker/immich/installer.env
 Resume behavior:
 - If a config file exists, the installer will offer to reuse it and skip prompts.
 - Use `--force-prompts` to re-enter all values.
+- Use `--update-allowlist` to change access restrictions only.
 
 ## Config file format
 

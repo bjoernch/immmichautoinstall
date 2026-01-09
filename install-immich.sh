@@ -44,6 +44,7 @@ Options:
   --config       Path to config file (default: $CONFIG_FILE_DEFAULT)
   --unattended   Run without prompts; requires config file with all values
   --force-prompts  Ignore saved config and re-ask all prompts
+  --update-allowlist  Update Nginx allowlist only and exit
   -h, --help     Show this help message
 EOF
 }
@@ -62,6 +63,10 @@ parse_args() {
         ;;
       --force-prompts)
         FORCE_PROMPTS="true"
+        shift
+        ;;
+      --update-allowlist)
+        UPDATE_ALLOWLIST_ONLY="true"
         shift
         ;;
       -h|--help)
@@ -590,6 +595,24 @@ normalize_ip_list() {
   done
 }
 
+update_allowlist() {
+  if [[ "$UNATTENDED" == "true" ]]; then
+    die "Allowlist update requires interactive mode."
+  fi
+  if confirm "Restrict access by IP allowlist?" "false"; then
+    prompt ALLOWED_IPS "Allowed IPs (comma-separated, IPv4/IPv6/CIDR)" "${ALLOWED_IPS:-203.0.113.4}" validate_ip_list
+  else
+    ALLOWED_IPS=""
+  fi
+  save_config
+  if [[ -d "/etc/letsencrypt/live/${DOMAIN}" ]]; then
+    write_nginx_config "true"
+  else
+    write_nginx_config "false"
+  fi
+  log "Allowlist updated."
+}
+
 write_nginx_config() {
   local site="/etc/nginx/sites-available/${DOMAIN}"
   local allowlist=""
@@ -853,6 +876,11 @@ main() {
   ensure_logfile
   load_config
 
+  if [[ "${UPDATE_ALLOWLIST_ONLY:-false}" == "true" ]]; then
+    update_allowlist
+    exit 0
+  fi
+
   log "Immich installer starting."
   preflight
 
@@ -868,6 +896,9 @@ main() {
     fi
   else
     collect_inputs
+  fi
+  if [[ "$UNATTENDED" == "false" && confirm "Change IP allowlist settings now?" "false" ]]; then
+    update_allowlist
   fi
   if [[ "$CONFIG_FILE_EXPLICIT" == "false" ]]; then
     CONFIG_FILE="${IMMICH_DIR}/installer.env"

@@ -882,12 +882,16 @@ main() {
   install_docker
   step_mark_done "docker"
 
-  ensure_sshfs
-  test_storagebox_ssh
-  ensure_remote_path
-  ensure_storagebox_mount
-  verify_mount_or_troubleshoot
-  step_mark_done "sshfs"
+  if step_is_done "sshfs" && mountpoint -q "$LOCAL_MOUNT"; then
+    log "Storage Box already mounted; skipping SSHFS setup."
+  else
+    ensure_sshfs
+    test_storagebox_ssh
+    ensure_remote_path
+    ensure_storagebox_mount
+    verify_mount_or_troubleshoot
+    step_mark_done "sshfs"
+  fi
 
   deploy_immich
   step_mark_done "immich"

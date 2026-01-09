@@ -14,9 +14,9 @@ Interactive installer for deploying Immich on Ubuntu 24.04 / Debian 12 with:
 Quick install from GitHub (recommended):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bjoernch/immmichautoinstall/main/install-immich.sh -o /root/install-immich.sh
-chmod +x /root/install-immich.sh
-sudo /root/install-immich.sh
+curl -fsSL https://raw.githubusercontent.com/bjoernch/immmichautoinstall/main/install-immich.sh -o "$HOME/install-immich.sh"
+chmod +x "$HOME/install-immich.sh"
+sudo "$HOME/install-immich.sh"
 ```
 
 Run locally as root or via sudo:

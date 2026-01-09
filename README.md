@@ -59,6 +59,7 @@ DB_DATA_LOCATION=/srv/docker/immich/postgres
 - Password auth is interactive (prompts during SFTP test and SSHFS mount).
 - The installer will open SFTP and guide you to create/verify the remote path.
 - Ensure SSH access is enabled in the Hetzner Storage Box settings before running the installer.
+- Access control: choose open access or restrict by IP; you can change this later by editing the config and re-running.
 
 ## What the installer does
 
@@ -69,3 +70,16 @@ DB_DATA_LOCATION=/srv/docker/immich/postgres
 - Nginx reverse proxy with TLS
 - Optional IP allowlist in Nginx
 - Optional healthcheck timer for auto-repair
+
+## Immich CLI
+
+To run a command, connect to the immich_server container and then execute via `immich-admin <command>`:
+
+```bash
+docker exec -it immich_server immich-admin help
+```
+
+Available commands:
+`help`, `reset-admin-password`, `disable-password-login`, `enable-password-login`,
+`disable-maintenance-mode`, `enable-maintenance-mode`, `enable-oauth-login`,
+`disable-oauth-login`, `list-users`, `version`, `change-media-location`

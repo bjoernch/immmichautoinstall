@@ -262,7 +262,11 @@ collect_inputs() {
   prompt IMMICH_DIR "Immich compose directory" "$default_immich_dir" validate_path
   prompt DOMAIN "Enter the Immich domain (subdomain)" "$default_domain" validate_domain
   prompt LETSENCRYPT_EMAIL "Enter email for Let's Encrypt" "$default_email" validate_email
-  prompt ALLOWED_IPS "Allowed IPs (comma-separated, IPv4/IPv6/CIDR)" "$default_allowed_ips" validate_ip_list
+  if confirm "Restrict access by IP allowlist?" "false"; then
+    prompt ALLOWED_IPS "Allowed IPs (comma-separated, IPv4/IPv6/CIDR)" "$default_allowed_ips" validate_ip_list
+  else
+    ALLOWED_IPS=""
+  fi
   prompt AUTH_METHOD "Storage Box auth method (password only)" "$default_auth_method" validate_auth_method
   prompt STORAGEBOX_HOST "Hetzner Storage Box host" "$default_storage_host" ""
   prompt STORAGEBOX_USER "Hetzner Storage Box user" "$default_storage_user" ""
@@ -375,7 +379,7 @@ ensure_remote_path() {
 
   log "Password auth is interactive; automated path checks are limited."
   if confirm "Open SFTP now to create/verify the path?" "false"; then
-    log "In SFTP, run: mkdir -p ${REMOTE_PATH#/}  then: cd ${REMOTE_PATH#/}  then: pwd  then: exit"
+    log "In SFTP, run: mkdir ${REMOTE_PATH#/}  then: cd ${REMOTE_PATH#/}  then: pwd  then: exit"
     sftp -o PreferredAuthentications=password -o PubkeyAuthentication=no \
       -o StrictHostKeyChecking=accept-new \
       "${STORAGEBOX_USER}@${STORAGEBOX_HOST}" || true
@@ -816,6 +820,7 @@ final_summary() {
 Immich setup complete.
 
 URL: https://${DOMAIN}
+You can now complete setup at: https://${DOMAIN}
 Upload location: ${UPLOAD_LOCATION}
 Database data: ${DB_DATA_LOCATION}
 Compose dir: ${IMMICH_DIR}
@@ -826,8 +831,14 @@ Runbook:
   Update Immich: (cd ${IMMICH_DIR} && docker compose pull && docker compose up -d)
   Check mount: systemctl status remote-fs.target; mount | grep ${LOCAL_MOUNT}
   Logs: journalctl -u sshfs -u remote-fs.target
-  Edit allowed IPs: ${CONFIG_FILE} then re-run this script or edit ${DOMAIN} site and reload nginx
+  Edit allowed IPs: ${CONFIG_FILE} then re-run this script (set empty to open access)
   Reload Nginx: nginx -t && systemctl reload nginx
+
+Immich CLI (inside container):
+  Run: docker exec -it immich_server immich-admin <command>
+  Commands: help, reset-admin-password, disable-password-login, enable-password-login,
+            disable-maintenance-mode, enable-maintenance-mode, enable-oauth-login,
+            disable-oauth-login, list-users, version, change-media-location
 EOF
 }
 

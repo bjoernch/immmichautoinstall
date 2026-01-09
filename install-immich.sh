@@ -897,7 +897,7 @@ main() {
   else
     collect_inputs
   fi
-  if [[ "$UNATTENDED" == "false" && confirm "Change IP allowlist settings now?" "false" ]]; then
+  if [[ "$UNATTENDED" == "false" ]] && confirm "Change IP allowlist settings now?" "false"; then
     update_allowlist
   fi
   if [[ "$CONFIG_FILE_EXPLICIT" == "false" ]]; then

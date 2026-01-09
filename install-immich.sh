@@ -6,9 +6,7 @@ SCRIPT_NAME="$(basename "$0")"
 IMMICH_DIR_DEFAULT="/srv/docker/immich"
 CONFIG_FILE_DEFAULT="${IMMICH_DIR_DEFAULT}/installer.env"
 IMMICH_DIR="${IMMICH_DIR_DEFAULT}"
-STORAGEBOX_KEY="/root/.ssh/immich_storagebox_ed25519"
-AUTH_METHOD_DEFAULT="key"
-AUTH_METHOD="${AUTH_METHOD_DEFAULT}"
+AUTH_METHOD="password"
 LOG_FILE="/var/log/immich-installer.log"
 
 UNATTENDED="false"
@@ -197,7 +195,7 @@ validate_ip_list() {
 }
 
 validate_auth_method() {
-  [[ "$1" == "key" || "$1" == "password" ]]
+  [[ "$1" == "password" ]]
 }
 
 detect_os() {
@@ -244,7 +242,7 @@ collect_inputs() {
   local default_local_mount="${LOCAL_MOUNT:-/srv/storagebox}"
   local default_upload="${UPLOAD_LOCATION:-/srv/storagebox/immich/library}"
   local default_db="${DB_DATA_LOCATION:-${default_immich_dir}/postgres}"
-  local default_auth_method="${AUTH_METHOD:-$AUTH_METHOD_DEFAULT}"
+  local default_auth_method="${AUTH_METHOD}"
 
   if [[ "$UNATTENDED" == "true" ]]; then
     : "${IMMICH_DIR:?Missing IMMICH_DIR in config}"
@@ -265,7 +263,7 @@ collect_inputs() {
   prompt DOMAIN "Enter the Immich domain (subdomain)" "$default_domain" validate_domain
   prompt LETSENCRYPT_EMAIL "Enter email for Let's Encrypt" "$default_email" validate_email
   prompt ALLOWED_IPS "Allowed IPs (comma-separated, IPv4/IPv6/CIDR)" "$default_allowed_ips" validate_ip_list
-  prompt AUTH_METHOD "Storage Box auth method (key|password)" "$default_auth_method" validate_auth_method
+  prompt AUTH_METHOD "Storage Box auth method (password only)" "$default_auth_method" validate_auth_method
   prompt STORAGEBOX_HOST "Hetzner Storage Box host" "$default_storage_host" ""
   prompt STORAGEBOX_USER "Hetzner Storage Box user" "$default_storage_user" ""
   prompt REMOTE_PATH "Remote path on Storage Box" "$default_remote_path" validate_path
@@ -306,59 +304,22 @@ install_docker() {
 }
 
 ensure_sshfs() {
-  if step_is_done "sshfs" && [[ "$AUTH_METHOD" == "key" && -f "$STORAGEBOX_KEY" ]]; then
-    log "SSHFS key already present; skipping key generation."
-  else
-    install_packages sshfs
-    if [[ "$AUTH_METHOD" == "key" ]]; then
-      if [[ ! -f "$STORAGEBOX_KEY" ]]; then
-        log "Generating SSH key for Storage Box..."
-        run_cmd ssh-keygen -t ed25519 -f "$STORAGEBOX_KEY" -N ""
-      fi
+  install_packages sshfs
+  log "Password authentication selected for Storage Box."
 
-      log "Storage Box public key (add this in Hetzner Robot/Storage Box):"
-      cat "${STORAGEBOX_KEY}.pub" | tee -a "$LOG_FILE"
-
-      if ! confirm "Have you added the SSH key to your Storage Box account?" "true"; then
-        log "Please add the key, then re-run or continue when ready."
-      fi
-    else
-      log "Password authentication selected for Storage Box."
-    fi
-  fi
-}
-
-storagebox_sftp_cmd() {
-  local cmd="$1"
-  if [[ "$AUTH_METHOD" == "password" ]]; then
-    sftp -b - \
-      -o StrictHostKeyChecking=accept-new \
-      -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-      "${STORAGEBOX_USER}@${STORAGEBOX_HOST}" <<EOF
-${cmd}
-quit
-EOF
-  else
-    sftp -b - -i "$STORAGEBOX_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-      "${STORAGEBOX_USER}@${STORAGEBOX_HOST}" <<EOF
-${cmd}
-quit
-EOF
+  if [[ "$UNATTENDED" != "true" ]]; then
+    log "Make sure Storage Box SSH access is enabled in the Hetzner panel (Storage Box settings)."
+    confirm "Have you enabled SSH access for this Storage Box?" "false" || true
   fi
 }
 
 test_storagebox_ssh() {
   log "Testing SSH connectivity to Storage Box..."
-  if [[ "$AUTH_METHOD" == "password" ]]; then
-    log "Opening SFTP test. Enter password, then type 'exit' to continue."
-    if sftp -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-      -o StrictHostKeyChecking=accept-new \
-      "${STORAGEBOX_USER}@${STORAGEBOX_HOST}"; then
-      log "SFTP session completed."
-      return 0
-    fi
-  elif storagebox_sftp_cmd "ls ." >/dev/null 2>&1; then
-    log "SSH connectivity OK."
+  log "Opening SFTP test. Enter password, then type 'exit' to continue."
+  if sftp -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+    -o StrictHostKeyChecking=accept-new \
+    "${STORAGEBOX_USER}@${STORAGEBOX_HOST}"; then
+    log "SFTP session completed."
     return 0
   fi
   log "SSH connectivity failed. Ensure the key is added and access is allowed."
@@ -412,28 +373,17 @@ ensure_remote_path() {
   log "Checking remote path on Storage Box: ${REMOTE_PATH}"
   log "Note: Storage Box SFTP is chrooted; leading '/' refers to your home directory."
 
-  if [[ "$AUTH_METHOD" == "password" ]]; then
-    log "Password auth is interactive; automated path checks are limited."
-    if confirm "Open SFTP now to verify the path exists?" "false"; then
-      log "In SFTP, run: cd ${REMOTE_PATH#/}  then: pwd  then: exit"
-      sftp -o PreferredAuthentications=password -o PubkeyAuthentication=no \
-        -o StrictHostKeyChecking=accept-new \
-        "${STORAGEBOX_USER}@${STORAGEBOX_HOST}" || true
-    fi
-    if confirm "Confirm that ${REMOTE_PATH} exists in Storage Box?" "false"; then
-      return 0
-    fi
-    die "Remote path missing or unconfirmed: ${REMOTE_PATH}"
+  log "Password auth is interactive; automated path checks are limited."
+  if confirm "Open SFTP now to create/verify the path?" "false"; then
+    log "In SFTP, run: mkdir -p ${REMOTE_PATH#/}  then: cd ${REMOTE_PATH#/}  then: pwd  then: exit"
+    sftp -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+      -o StrictHostKeyChecking=accept-new \
+      "${STORAGEBOX_USER}@${STORAGEBOX_HOST}" || true
   fi
-
-  if remote_path_exists; then
-    log "Remote path exists."
+  if confirm "Confirm that ${REMOTE_PATH} exists in Storage Box?" "false"; then
     return 0
   fi
-
-  log "Remote path does not exist."
-  log "Please create this directory in your Storage Box (via SFTP or Hetzner panel), then re-run."
-  die "Remote path missing: ${REMOTE_PATH}"
+  die "Remote path missing or unconfirmed: ${REMOTE_PATH}"
 }
 
 ensure_fuse_allow_other() {
@@ -780,6 +730,86 @@ setup_firewall_optional() {
   fi
 }
 
+install_healthcheck() {
+  if ! confirm "Install health checks with auto-repair (mount, containers, nginx)?" "false"; then
+    return 0
+  fi
+
+  local hc_script="/usr/local/bin/immich-healthcheck.sh"
+  cat > "$hc_script" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+LOG_FILE="/var/log/immich-healthcheck.log"
+IMMICH_DIR="${IMMICH_DIR}"
+LOCAL_MOUNT="${LOCAL_MOUNT}"
+AUTH_METHOD="${AUTH_METHOD}"
+
+log() {
+  echo "[\$(date +"%Y-%m-%d %H:%M:%S")] \$*" | tee -a "\$LOG_FILE"
+}
+
+ensure_mount() {
+  if mountpoint -q "\$LOCAL_MOUNT"; then
+    return 0
+  fi
+  log "Mount missing at \$LOCAL_MOUNT; attempting remount."
+  if [[ "\$AUTH_METHOD" == "password" ]]; then
+    log "Password auth requires interactive mount; manual action needed."
+    return 1
+  fi
+  mount "\$LOCAL_MOUNT" || return 1
+}
+
+ensure_containers() {
+  if [[ -d "\$IMMICH_DIR" ]]; then
+    (cd "\$IMMICH_DIR" && docker compose up -d) || return 1
+  fi
+}
+
+ensure_nginx() {
+  systemctl is-active --quiet nginx || systemctl restart nginx || return 1
+}
+
+main() {
+  log "Healthcheck start."
+  ensure_mount || log "Mount check failed."
+  ensure_containers || log "Container check failed."
+  ensure_nginx || log "Nginx check failed."
+  log "Healthcheck done."
+}
+
+main "\$@"
+EOF
+  chmod +x "$hc_script"
+
+  cat > /etc/systemd/system/immich-healthcheck.service <<EOF
+[Unit]
+Description=Immich healthcheck and auto-repair
+
+[Service]
+Type=oneshot
+ExecStart=${hc_script}
+EOF
+
+  cat > /etc/systemd/system/immich-healthcheck.timer <<EOF
+[Unit]
+Description=Run Immich healthcheck every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  run_cmd systemctl daemon-reload
+  run_cmd systemctl enable --now immich-healthcheck.timer
+  log "Healthcheck installed. Logs: /var/log/immich-healthcheck.log"
+}
+
 final_summary() {
   cat <<EOF
 
@@ -859,6 +889,10 @@ main() {
 
   setup_firewall_optional
   step_mark_done "ufw"
+
+  install_healthcheck
+  step_mark_done "healthcheck"
+
   final_summary
 }
 

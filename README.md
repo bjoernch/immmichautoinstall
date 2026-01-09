@@ -2,14 +2,24 @@
 
 Interactive installer for deploying Immich on Ubuntu 24.04 / Debian 12 with:
 - Docker Engine + Compose plugin
-- Hetzner Storage Box mounted via SSHFS
-- Nginx reverse proxy with Let's Encrypt TLS
+- Hetzner Storage Box mounted via SSHFS (password auth only)
+- Nginx reverse proxy with Let’s Encrypt TLS (webroot)
 - Optional IP allowlist access restriction
-- Storage Box auth options: SSH key (recommended) or interactive password
+- Guided DNS setup + public IP detection
+- Guided Storage Box SFTP verification
+- Optional health checks with auto-repair (mount, containers, nginx)
 
 ## Usage
 
-Run as root or via sudo:
+Quick install from GitHub (recommended):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bjoernch/immmichautoinstall/main/install-immich.sh -o /root/install-immich.sh
+chmod +x /root/install-immich.sh
+sudo /root/install-immich.sh
+```
+
+Run locally as root or via sudo:
 
 ```bash
 sudo ./install-immich.sh
@@ -34,7 +44,7 @@ IMMICH_DIR=/srv/docker/immich
 DOMAIN=photos.example.com
 LETSENCRYPT_EMAIL=admin@example.com
 ALLOWED_IPS=203.0.113.4,2001:db8::1
-AUTH_METHOD=key
+AUTH_METHOD=password
 STORAGEBOX_HOST=uXXXXX.your-storagebox.de
 STORAGEBOX_USER=uXXXXX
 REMOTE_PATH=/srv-fsn-1
@@ -46,4 +56,16 @@ DB_DATA_LOCATION=/srv/docker/immich/postgres
 ## Notes
 
 - The Storage Box remote path must exist before running the installer.
-- Password auth is interactive (prompts during SFTP test and SSHFS mount), so unattended mode is intended for SSH key auth.
+- Password auth is interactive (prompts during SFTP test and SSHFS mount).
+- The installer will open SFTP and guide you to create/verify the remote path.
+- Ensure SSH access is enabled in the Hetzner Storage Box settings before running the installer.
+
+## What the installer does
+
+- Preflight checks: OS, sudo, base packages
+- Docker install + Compose plugin setup
+- SSHFS mount configuration and verification
+- Immich compose download + .env generation
+- Nginx reverse proxy with TLS
+- Optional IP allowlist in Nginx
+- Optional healthcheck timer for auto-repair

@@ -308,6 +308,11 @@ install_docker() {
 }
 
 ensure_sshfs() {
+  if step_is_done "sshfs"; then
+    log "SSHFS already configured; skipping."
+    return 0
+  fi
+
   install_packages sshfs
   log "Password authentication selected for Storage Box."
 
